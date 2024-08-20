@@ -25,17 +25,19 @@ func main() {
 	}
 	realm := cfg.Section("turn").Key("realm").String()
 
-	turnConfig := turn.DefaultConfig()
-	turnConfig.PublicIP = publicIP
-	turnConfig.Port = stunPort
-	turnConfig.Realm = realm
-	turn := turn.NewTurnServer(turnConfig)
+	turnConfig := turn.TurnServerConfig{
+		PublicIP: publicIP,
+		Port:     stunPort,
+		Realm:    realm,
+		Username: cfg.Section("turn").Key("username").String(),
+		Password: cfg.Section("turn").Key("password").String(),
+	}
 
-	signaler := signaler.NewSignaler(turn)
+	signaler := signaler.NewSignaler(&turnConfig)
 	wsServer := websocket.NewWebSocketServer(signaler.HandleNewWebSocket, signaler.HandleTurnServerCredentials)
 
-	sslCert := cfg.Section("general").Key("cert").String()
-	sslKey := cfg.Section("general").Key("key").String()
+	// sslCert := cfg.Section("general").Key("cert").String()
+	// sslKey := cfg.Section("general").Key("key").String()
 	bindAddress := cfg.Section("general").Key("bind").String()
 
 	port, err := cfg.Section("general").Key("port").Int()
@@ -48,9 +50,9 @@ func main() {
 	config := websocket.DefaultConfig()
 	config.Host = bindAddress
 	config.Port = port
-	config.CertFile = sslCert
-	config.KeyFile = sslKey
 	config.HTMLRoot = htmlRoot
+	config.TurnServerPath = "/turn"
+	config.WebSocketPath = "/ws/connect"
 
 	wsServer.Bind(config)
 }

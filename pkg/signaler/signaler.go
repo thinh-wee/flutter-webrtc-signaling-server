@@ -1,20 +1,13 @@
 package signaler
 
 import (
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/flutter-webrtc/flutter-webrtc-server/pkg/logger"
 	"github.com/flutter-webrtc/flutter-webrtc-server/pkg/turn"
-	"github.com/flutter-webrtc/flutter-webrtc-server/pkg/util"
 	"github.com/flutter-webrtc/flutter-webrtc-server/pkg/websocket"
 )
 
@@ -82,30 +75,17 @@ type Error struct {
 }
 
 type Signaler struct {
-	peers     map[string]Peer
-	sessions  map[string]Session
-	turn      *turn.TurnServer
-	expresMap *util.ExpiredMap
+	peers    map[string]Peer
+	sessions map[string]Session
+	turn     *turn.TurnServerConfig
 }
 
-func NewSignaler(turn *turn.TurnServer) *Signaler {
-	var signaler = &Signaler{
-		peers:     make(map[string]Peer),
-		sessions:  make(map[string]Session),
-		turn:      turn,
-		expresMap: util.NewExpiredMap(),
+func NewSignaler(turn *turn.TurnServerConfig) *Signaler {
+	return &Signaler{
+		peers:    make(map[string]Peer),
+		sessions: make(map[string]Session),
+		turn:     turn,
 	}
-	signaler.turn.AuthHandler = signaler.authHandler
-	return signaler
-}
-
-func (s Signaler) authHandler(username string, realm string, srcAddr net.Addr) (string, bool) {
-	// handle turn credential.
-	if found, info := s.expresMap.Get(username); found {
-		credential := info.(TurnCredentials)
-		return credential.Password, true
-	}
-	return "", false
 }
 
 // NotifyPeersUpdate .
@@ -130,21 +110,12 @@ func (s *Signaler) HandleTurnServerCredentials(writer http.ResponseWriter, reque
 	writer.Header().Set("Content-Type", "application/json")
 	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-	params, err := url.ParseQuery(request.URL.RawQuery)
-	if err != nil {
-
-	}
-	logger.Debugf("%v", params)
-	service := params["service"][0]
-	if service != "turn" {
-		return
-	}
-	username := params["username"][0]
-	timestamp := time.Now().Unix()
-	turnUsername := fmt.Sprintf("%d:%s", timestamp, username)
-	hmac := hmac.New(sha1.New, []byte(sharedKey))
-	hmac.Write([]byte(turnUsername))
-	turnPassword := base64.RawStdEncoding.EncodeToString(hmac.Sum(nil))
+	// username := s.turn.Username
+	// timestamp := time.Now().Unix()
+	// turnUsername := fmt.Sprintf("%d:%s", timestamp, username)
+	// hmac := hmac.New(sha1.New, []byte(s.turn.Password))
+	// hmac.Write([]byte(turnUsername))
+	// turnPassword := base64.RawStdEncoding.EncodeToString(hmac.Sum(nil))
 	/*
 		{
 		     "username" : "12334939:mbzrxpgjys",
@@ -167,16 +138,17 @@ func (s *Signaler) HandleTurnServerCredentials(writer http.ResponseWriter, reque
 
 	*/
 	ttl := 86400
-	host := fmt.Sprintf("%s:%d", s.turn.Config.PublicIP, s.turn.Config.Port)
+	host := fmt.Sprintf("%s:%d", s.turn.PublicIP, s.turn.Port)
 	credential := TurnCredentials{
-		Username: turnUsername,
-		Password: turnPassword,
+		Username: s.turn.Username,
+		Password: s.turn.Password,
 		TTL:      ttl,
 		Uris: []string{
 			"turn:" + host + "?transport=udp",
+			"turn:" + host + "?transport=tcp",
+			"turns:" + host + "?transport=tcp",
 		},
 	}
-	s.expresMap.Set(turnUsername, credential, int64(ttl))
 	json.NewEncoder(writer).Encode(credential)
 }
 
